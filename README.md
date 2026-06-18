@@ -215,24 +215,13 @@ docker compose down -v
 
 ## Visualizar Diagramas C4
 
-### Opção 1 — VS Code (recomendado)
+Os diagramas estão no formato **LikeC4 DSL** (arquivos `.c4`).
 
 1. Instale a extensão [**LikeC4**](https://marketplace.visualstudio.com/items?itemName=likec4.likec4) no VS Code
 2. Abra o arquivo `diagramas/c4/model.c4`
 3. Clique em **Preview** no canto superior direito do editor
 
 Três views disponíveis: **Context** (nível 1), **Container** (nível 2) e **Deployment — Kubernetes Runtime**.
-
-### Opção 2 — Structurizr Lite (Docker)
-
-```bash
-docker run -it --rm \
-  -p 8080:8080 \
-  -v $(pwd)/diagramas/c4:/usr/local/structurizr \
-  structurizr/lite
-```
-
-Acesse http://localhost:8080.
 
 ---
 
