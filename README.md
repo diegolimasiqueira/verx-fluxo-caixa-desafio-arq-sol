@@ -213,15 +213,19 @@ docker compose down -v
 
 ---
 
-## Visualizar Diagramas C4
+## Diagramas de Arquitetura
 
-Os diagramas estão no formato **LikeC4 DSL** (arquivos `.c4`).
+### C4 Level 1 — System Context
+![System Context](diagramas/images/view1.png)
 
-1. Instale a extensão [**LikeC4**](https://marketplace.visualstudio.com/items?itemName=likec4.likec4) no VS Code
-2. Abra o arquivo `diagramas/c4/model.c4`
-3. Clique em **Preview** no canto superior direito do editor
+### C4 Level 2 — Container View
+![Container View](diagramas/images/view2.png)
 
-Três views disponíveis: **Context** (nível 1), **Container** (nível 2) e **Deployment — Kubernetes Runtime**.
+### C4 Deployment View — Kubernetes Runtime
+![Kubernetes Runtime](diagramas/images/view3.png)
+
+> Os diagramas estão no formato **LikeC4 DSL** em `diagramas/c4/model.c4`.
+> Para visualizar interativamente: instale a extensão [**LikeC4**](https://marketplace.visualstudio.com/items?itemName=likec4.likec4) no VS Code, abra `model.c4` e clique em **Preview**.
 
 ---
 
