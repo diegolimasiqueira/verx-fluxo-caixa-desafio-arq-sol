@@ -10,6 +10,7 @@ build-output/
 # Coverage
 coverage-results/
 TestResults/
+frontend/public/coverage/
 
 # NuGet
 *.nupkg
