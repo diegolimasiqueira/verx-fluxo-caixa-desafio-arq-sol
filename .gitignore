@@ -1,0 +1,38 @@
+# .NET build artifacts
+bin/
+obj/
+build-output/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+
+# Coverage
+coverage-results/
+TestResults/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# Rider / VS
+.idea/
+*.sln.DotSettings
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+.npm/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes / temp
+postgres_data/
+
+# Logs
+*.log

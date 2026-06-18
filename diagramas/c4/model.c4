@@ -1,0 +1,259 @@
+  model {
+    merchant = actor 'Comerciante' {
+      description 'Usuário responsável por registrar lançamentos de débito/crédito e consultar o saldo diário consolidado.'
+    }
+  
+    cashflow = system 'Cash Flow Platform' {
+      description 'Solução para controle de lançamentos financeiros e consolidação diária de saldo.'
+  
+      frontend = component 'Web Frontend' {
+        description 'Aplicação web para cadastro de lançamentos e consulta de saldo diário.'
+        technology 'React'
+        style {
+          icon tech:react
+          shape browser
+        }
+      }
+  
+      bff = component 'BFF / API Gateway' {
+        description 'Camada de entrada para o canal web. Centraliza roteamento, composição de respostas e políticas de consumo.'
+        technology '.NET 10'
+        style {
+          icon tech:dotnet
+        }
+      }
+  
+      launchService = component 'Launch Service' {
+        description 'Microserviço responsável pelo registro, validação e consulta de lançamentos financeiros.'
+        technology '.NET 10'
+        style {
+          icon tech:dotnet
+        }
+      }
+  
+      launchDb = database 'Launch Database' {
+        description 'Base transacional dos lançamentos financeiros.'
+        technology 'PostgreSQL'
+        style {
+          icon tech:postgresql
+        }
+      }
+  
+      broker = queue 'RabbitMQ' {
+        description 'Broker de mensagens para desacoplar o registro de lançamentos da consolidação diária.'
+        technology 'RabbitMQ'
+        style {
+          icon tech:rabbitmq
+        }
+      }
+  
+      dailyBalanceWorker = component 'Daily Balance Worker' {
+        description 'Worker assíncrono responsável por consumir eventos de lançamentos e atualizar o saldo consolidado diário.'
+        technology '.NET 10 Worker Service'
+        style {
+          icon tech:dotnet
+        }
+      }
+  
+      dailyBalanceService = component 'Daily Balance Service' {
+        description 'Microserviço responsável pela consulta do saldo diário consolidado.'
+        technology '.NET 10'
+        style {
+          icon tech:dotnet
+        }
+      }
+  
+      balanceDb = database 'Daily Balance Database' {
+        description 'Base otimizada para consulta de saldo diário consolidado.'
+        technology 'PostgreSQL'
+        style {
+          icon tech:postgresql
+        }
+      }
+  
+      observability = component 'Observability Stack' {
+        description 'Monitoramento, métricas, logs, traces e dashboards operacionais.'
+        technology 'Prometheus, Loki, Grafana, OpenTelemetry'
+      }
+  
+      kubernetes = component 'Kubernetes Cluster' {
+        description 'Ambiente alvo para execução dos serviços, escalabilidade horizontal, resiliência e isolamento operacional.'
+        technology 'Kubernetes'
+        style {
+          icon tech:kubernetes
+        }
+  
+        ingress = component 'Ingress Controller' {
+          description 'Entrada HTTP/HTTPS para os serviços da plataforma.'
+          technology 'NGINX Ingress'
+        }
+  
+        launchPods = component 'Launch Service Pods' {
+          description 'Réplicas do serviço de lançamentos.'
+          technology '.NET 10 Pods'
+          style {
+            icon tech:dotnet
+          }
+        }
+  
+        balanceServicePods = component 'Daily Balance Service Pods' {
+          description 'Réplicas do serviço de consulta do saldo consolidado.'
+          technology '.NET 10 Pods'
+          style {
+            icon tech:dotnet
+          }
+        }
+  
+        balanceWorkerPods = component 'Daily Balance Worker Pods' {
+          description 'Workers responsáveis pela consolidação assíncrona.'
+          technology '.NET 10 Worker Pods'
+          style {
+            icon tech:dotnet
+          }
+        }
+  
+        rabbitMqPods = queue 'RabbitMQ Pods' {
+          description 'Instância ou cluster RabbitMQ para mensageria assíncrona.'
+          technology 'RabbitMQ'
+          style {
+            icon tech:rabbitmq
+          }
+        }
+  
+        postgresLaunch = database 'PostgreSQL Launch' {
+          description 'Banco de dados transacional do domínio de lançamentos.'
+          technology 'PostgreSQL'
+          style {
+            icon tech:postgresql
+          }
+        }
+  
+        postgresBalance = database 'PostgreSQL Balance' {
+          description 'Banco de dados de leitura do domínio de saldo diário.'
+          technology 'PostgreSQL'
+          style {
+            icon tech:postgresql
+          }
+        }
+  
+        keda = component 'KEDA / HPA' {
+          description 'Escala horizontalmente serviços e workers com base em CPU, memória e profundidade da fila.'
+          technology 'KEDA + HPA'
+          style {
+            icon tech:kubernetes
+          }
+        }
+  
+        istio = component 'Istio Service Mesh' {
+          description 'Opcional em produção para mTLS, tracing, retries, circuit breaking e políticas de tráfego.'
+          technology 'Istio'
+          style {
+            icon azure:aks-istio
+          }
+        }
+  
+        prometheus = component 'Prometheus' {
+          description 'Coleta métricas dos serviços, workers, broker e cluster.'
+          technology 'Prometheus'
+          style {
+            icon tech:prometheus
+          }
+        }
+  
+        loki = component 'Loki' {
+          description 'Agregação e consulta de logs.'
+          technology 'Loki'
+          style {
+            icon tech:grafana
+          }
+        }
+  
+        grafana = component 'Grafana' {
+          description 'Dashboards operacionais, métricas e logs.'
+          technology 'Grafana'
+          style {
+            icon tech:grafana
+          }
+        }
+  
+        otel = component 'OpenTelemetry Collector' {
+          description 'Coleta e encaminhamento de traces, métricas e logs.'
+          technology 'OpenTelemetry'
+          style {
+            icon tech:open-telemetry
+          }
+        }
+      }
+  
+      frontend -> bff 'consome APIs via HTTPS'
+  
+      bff -> launchService 'registra e consulta lançamentos'
+      bff -> dailyBalanceService 'consulta saldo diário consolidado'
+  
+      launchService -> launchDb 'grava e consulta lançamentos'
+      launchService -> broker 'publica evento LaunchRegistered'
+  
+      broker -> dailyBalanceWorker 'entrega eventos para consolidação'
+      dailyBalanceWorker -> balanceDb 'atualiza saldo diário consolidado'
+      dailyBalanceService -> balanceDb 'consulta saldo diário consolidado'
+  
+      launchService -> observability 'envia métricas, logs e traces'
+      dailyBalanceService -> observability 'envia métricas, logs e traces'
+      dailyBalanceWorker -> observability 'envia métricas, logs e traces'
+  
+      kubernetes.ingress -> kubernetes.launchPods 'roteia chamadas de lançamentos'
+      kubernetes.ingress -> kubernetes.balanceServicePods 'roteia consultas de saldo'
+  
+      kubernetes.launchPods -> kubernetes.postgresLaunch 'grava e consulta lançamentos'
+      kubernetes.launchPods -> kubernetes.rabbitMqPods 'publica evento LaunchRegistered'
+  
+      kubernetes.rabbitMqPods -> kubernetes.balanceWorkerPods 'entrega eventos'
+      kubernetes.balanceWorkerPods -> kubernetes.postgresBalance 'atualiza saldo diário'
+      kubernetes.balanceServicePods -> kubernetes.postgresBalance 'consulta saldo consolidado'
+  
+      kubernetes.keda -> kubernetes.balanceWorkerPods 'escala por profundidade da fila'
+      kubernetes.istio -> kubernetes.launchPods 'aplica mTLS, retries e políticas'
+      kubernetes.istio -> kubernetes.balanceServicePods 'aplica mTLS, retries e políticas'
+  
+      kubernetes.launchPods -> kubernetes.otel 'envia telemetria'
+      kubernetes.balanceServicePods -> kubernetes.otel 'envia telemetria'
+      kubernetes.balanceWorkerPods -> kubernetes.otel 'envia telemetria'
+  
+      kubernetes.otel -> kubernetes.prometheus 'exporta métricas'
+      kubernetes.otel -> kubernetes.loki 'exporta logs'
+      kubernetes.prometheus -> kubernetes.grafana 'fornece métricas'
+      kubernetes.loki -> kubernetes.grafana 'fornece logs'
+    }
+  
+    merchant -> cashflow.frontend 'acessa pelo navegador'
+  }
+  
+  views {
+    view index {
+      title 'C4 Level 1 - System Context'
+  
+      include *
+    }
+  
+    view of cashflow {
+      title 'C4 Level 2 - Container View'
+  
+      include
+        merchant,
+        frontend,
+        bff,
+        launchService,
+        launchDb,
+        broker,
+        dailyBalanceWorker,
+        dailyBalanceService,
+        balanceDb,
+        observability
+    }
+  
+    view of cashflow.kubernetes {
+      title 'C4 Deployment View - Kubernetes Runtime'
+  
+      include *
+    }
+  }

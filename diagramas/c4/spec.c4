@@ -1,0 +1,31 @@
+specification {
+    element actor {
+      style {
+        shape person
+      }
+    }
+  
+    element system {
+      style {
+        opacity 10%
+      }
+    }
+  
+    element component {
+      style {
+        opacity 50%
+      }
+    }
+  
+    element database {
+      style {
+        shape storage
+      }
+    }
+  
+    element queue {
+      style {
+        shape queue
+      }
+    }
+  }

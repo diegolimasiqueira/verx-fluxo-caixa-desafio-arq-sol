@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/DailyBalanceService/">
+    <Project Path="src/DailyBalanceService/CashFlow.DailyBalanceService.Api/CashFlow.DailyBalanceService.Api.csproj" />
+    <Project Path="src/DailyBalanceService/CashFlow.DailyBalanceService.Tests/CashFlow.DailyBalanceService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/src/DailyBalanceWorker/">
+    <Project Path="src/DailyBalanceWorker/CashFlow.DailyBalanceWorker.Tests/CashFlow.DailyBalanceWorker.Tests.csproj" />
+    <Project Path="src/DailyBalanceWorker/CashFlow.DailyBalanceWorker/CashFlow.DailyBalanceWorker.csproj" />
+  </Folder>
+  <Folder Name="/src/LaunchService/">
+    <Project Path="src/LaunchService/CashFlow.LaunchService.Api/CashFlow.LaunchService.Api.csproj" />
+    <Project Path="src/LaunchService/CashFlow.LaunchService.Tests/CashFlow.LaunchService.Tests.csproj" />
+  </Folder>
+</Solution>
