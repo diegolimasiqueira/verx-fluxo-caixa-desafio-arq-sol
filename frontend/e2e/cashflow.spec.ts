@@ -39,8 +39,16 @@ test.describe('Fluxo de negócio', () => {
 
     await page.getByPlaceholder('Ex: Venda de produto, Pagamento de fornecedor...').fill(description)
     await page.locator('.ant-input-number-input').fill('250')
-    await page.getByRole('button', { name: 'Registrar Lançamento' }).click()
+
+    const [listRefresh] = await Promise.all([
+      page.waitForResponse(
+        res => res.url().includes('/api/launches') && res.request().method() === 'GET' && res.status() === 200,
+        { timeout: 15_000 }
+      ),
+      page.getByRole('button', { name: 'Registrar Lançamento' }).click(),
+    ])
     await expect(page.getByText('Lançamento registrado com sucesso!')).toBeVisible({ timeout: 10_000 })
+    expect(listRefresh.ok()).toBeTruthy()
     await expect(page.getByText(description)).toBeVisible({ timeout: 10_000 })
 
     await page.getByRole('link', { name: 'Saldo Diário' }).click()
@@ -61,7 +69,7 @@ test.describe('Fluxo de negócio', () => {
   test('admin acessa gerenciamento de usuários', async ({ page }) => {
     await page.getByRole('link', { name: 'Usuários' }).click()
     await expect(page.getByRole('heading', { name: /Usuários/i })).toBeVisible()
-    await expect(page.getByText('admin@admin.com')).toBeVisible()
+    await expect(page.getByRole('table').getByText('admin@admin.com')).toBeVisible()
   })
 
   test('página de testes carrega métricas', async ({ page }) => {

@@ -1,17 +1,22 @@
 {
-  "status": "pending",
-  "message": "Execute ./scripts/run-quality-gates.sh com a stack rodando.",
-  "generatedAt": null,
+  "status": "passed",
+  "generatedAt": "2026-06-24T19:39:40.887110+00:00",
   "targetRps": 50,
-  "achievedRps": 0,
-  "durationSeconds": 0,
-  "totalRequests": 0,
-  "errorRate": 0,
-  "p95LatencyMs": 0,
+  "achievedRps": 50.0,
+  "durationSeconds": 30,
+  "totalRequests": 1502,
+  "errorRate": 0.0,
+  "p95LatencyMs": 1,
+  "endpoint": "GET /api/balance/{date} (Daily Balance Service — JWT via BFF login)",
   "thresholds": {
     "maxErrorRate": 0.05,
-    "errorRatePassed": false,
+    "errorRatePassed": true,
     "minAchievedRps": 47.5,
-    "targetRpsPassed": false
-  }
+    "targetRpsPassed": true
+  },
+  "notes": [
+    "NFR: 50 req/s no consolidado diário, máx. 5% perda (Documentos/01-requisitos.md).",
+    "Cache IMemoryCache (TTL 5 min) no Daily Balance Service.",
+    "Artefatos K8s: infra/k8s/ (HPA + KEDA — evolução produção)."
+  ]
 }

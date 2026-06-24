@@ -62,6 +62,8 @@ const COLUMNS: ColumnsType<Launch> = [
     dataIndex: 'createdAt',
     key: 'createdAt',
     width: 160,
+    defaultSortOrder: 'descend' as const,
+    sorter: (a: Launch, b: Launch) => a.createdAt.localeCompare(b.createdAt),
     render: (d: string) => dayjs(d).format('DD/MM/YYYY HH:mm'),
   },
 ]
