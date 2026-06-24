@@ -7,8 +7,8 @@
       description 'Solução para controle de lançamentos financeiros e consolidação diária de saldo.'
   
       frontend = component 'Web Frontend' {
-        description 'Aplicação web para cadastro de lançamentos e consulta de saldo diário.'
-        technology 'React'
+        description 'SPA React servida via NGINX. Login, lançamentos, consulta de saldo, gestão de usuários (admin) e painel de relatórios de testes.'
+        technology 'React + NGINX'
         style {
           icon tech:react
           shape browser
@@ -16,10 +16,18 @@
       }
   
       bff = component 'BFF / API Gateway' {
-        description 'Camada de entrada para o canal web. Autenticação JWT (login e-mail/senha), RBAC, rate limiting e proxy para microserviços internos.'
+        description 'Ponto único de entrada do canal web. Autenticação JWT (login e-mail/senha), RBAC (admin/merchant), rate limiting, security headers e proxy para microserviços internos.'
         technology '.NET 10'
         style {
           icon tech:dotnet
+        }
+      }
+
+      bffDb = database 'BFF Database' {
+        description 'Base de dados de usuários e credenciais do BFF.'
+        technology 'PostgreSQL'
+        style {
+          icon tech:postgresql
         }
       }
   
@@ -56,7 +64,7 @@
       }
   
       dailyBalanceService = component 'Daily Balance Service' {
-        description 'Microserviço responsável pela consulta do saldo diário consolidado.'
+        description 'Microserviço responsável pela consulta do saldo diário consolidado. Cache IMemoryCache (TTL 5 min).'
         technology '.NET 10'
         style {
           icon tech:dotnet
@@ -72,8 +80,8 @@
       }
   
       observability = component 'Observability Stack' {
-        description 'Monitoramento, métricas, logs, traces e dashboards operacionais.'
-        technology 'Prometheus, Loki, Grafana, OpenTelemetry'
+        description 'Monitoramento, métricas, logs, traces e dashboards operacionais. MVP: OTel Collector + Prometheus + Loki + Tempo + Grafana.'
+        technology 'OpenTelemetry, Prometheus, Loki, Tempo, Grafana'
       }
   
       kubernetes = component 'Kubernetes Cluster' {
@@ -84,8 +92,24 @@
         }
   
         ingress = component 'Ingress Controller' {
-          description 'Entrada HTTP/HTTPS para os serviços da plataforma.'
+          description 'Entrada HTTP/HTTPS. Roteia / para o Frontend e /api/* para o BFF.'
           technology 'NGINX Ingress'
+        }
+
+        bffPods = component 'BFF Pods' {
+          description 'Réplicas do BFF. Autentica, autoriza e roteia para microserviços internos.'
+          technology '.NET 10 Pods'
+          style {
+            icon tech:dotnet
+          }
+        }
+
+        frontendPods = component 'Frontend Pods' {
+          description 'Réplicas do frontend React servido via NGINX.'
+          technology 'React + NGINX Pods'
+          style {
+            icon tech:react
+          }
         }
   
         launchPods = component 'Launch Service Pods' {
@@ -119,17 +143,9 @@
             icon tech:rabbitmq
           }
         }
-  
-        postgresLaunch = database 'PostgreSQL Launch' {
-          description 'Banco de dados transacional do domínio de lançamentos.'
-          technology 'PostgreSQL'
-          style {
-            icon tech:postgresql
-          }
-        }
-  
-        postgresBalance = database 'PostgreSQL Balance' {
-          description 'Banco de dados de leitura do domínio de saldo diário.'
+
+        postgresCluster = database 'PostgreSQL' {
+          description 'Cluster PostgreSQL com databases separados por domínio: bff_db, launch_db, daily_balance_db.'
           technology 'PostgreSQL'
           style {
             icon tech:postgresql
@@ -137,7 +153,7 @@
         }
   
         keda = component 'KEDA / HPA' {
-          description 'Escala horizontalmente serviços e workers com base em CPU, memória e profundidade da fila.'
+          description 'KEDA escala o Worker por profundidade da fila. HPA escala Launch e Daily Balance Service por CPU/memória.'
           technology 'KEDA + HPA'
           style {
             icon tech:kubernetes
@@ -145,7 +161,7 @@
         }
   
         istio = component 'Istio Service Mesh' {
-          description 'Opcional em produção para mTLS, tracing, retries, circuit breaking e políticas de tráfego.'
+          description 'Opcional em produção para mTLS, retries, circuit breaking e políticas de tráfego.'
           technology 'Istio'
           style {
             icon azure:aks-istio
@@ -153,7 +169,7 @@
         }
   
         prometheus = component 'Prometheus' {
-          description 'Coleta métricas dos serviços, workers, broker e cluster.'
+          description 'Coleta métricas expostas pelo OTel Collector.'
           technology 'Prometheus'
           style {
             icon tech:prometheus
@@ -167,9 +183,17 @@
             icon tech:grafana
           }
         }
+
+        tempo = component 'Tempo' {
+          description 'Backend de traces distribuídos.'
+          technology 'Grafana Tempo'
+          style {
+            icon tech:grafana
+          }
+        }
   
         grafana = component 'Grafana' {
-          description 'Dashboards operacionais, métricas e logs.'
+          description 'Dashboards operacionais — métricas (Prometheus), logs (Loki) e traces (Tempo).'
           technology 'Grafana'
           style {
             icon tech:grafana
@@ -177,16 +201,17 @@
         }
   
         otel = component 'OpenTelemetry Collector' {
-          description 'Coleta e encaminhamento de traces, métricas e logs.'
-          technology 'OpenTelemetry'
+          description 'Recebe telemetria OTLP dos serviços e roteia: métricas → Prometheus, logs → Loki, traces → Tempo.'
+          technology 'OpenTelemetry Collector'
           style {
             icon tech:open-telemetry
           }
         }
       }
   
-      frontend -> bff 'consome APIs via HTTPS'
-  
+      frontend -> bff 'consome APIs via HTTP/HTTPS'
+
+      bff -> bffDb 'lê e grava usuários'
       bff -> launchService 'registra e consulta lançamentos'
       bff -> dailyBalanceService 'consulta saldo diário consolidado'
   
@@ -197,32 +222,43 @@
       dailyBalanceWorker -> balanceDb 'atualiza saldo diário consolidado'
       dailyBalanceService -> balanceDb 'consulta saldo diário consolidado'
   
-      launchService -> observability 'envia métricas, logs e traces'
-      dailyBalanceService -> observability 'envia métricas, logs e traces'
-      dailyBalanceWorker -> observability 'envia métricas, logs e traces'
+      bff -> observability 'envia métricas, logs e traces (OTLP)'
+      launchService -> observability 'envia métricas, logs e traces (OTLP)'
+      dailyBalanceService -> observability 'envia métricas, logs e traces (OTLP)'
+      dailyBalanceWorker -> observability 'envia métricas, logs e traces (OTLP)'
+
+      kubernetes.ingress -> kubernetes.frontendPods 'roteia tráfego web (/ e /tests)'
+      kubernetes.ingress -> kubernetes.bffPods 'roteia chamadas de API (/api/*)'
+
+      kubernetes.bffPods -> kubernetes.postgresCluster 'lê e grava usuários (bff_db)'
+      kubernetes.bffPods -> kubernetes.launchPods 'proxy lançamentos'
+      kubernetes.bffPods -> kubernetes.balanceServicePods 'proxy saldo'
   
-      kubernetes.ingress -> kubernetes.launchPods 'roteia chamadas de lançamentos'
-      kubernetes.ingress -> kubernetes.balanceServicePods 'roteia consultas de saldo'
-  
-      kubernetes.launchPods -> kubernetes.postgresLaunch 'grava e consulta lançamentos'
+      kubernetes.launchPods -> kubernetes.postgresCluster 'grava e consulta lançamentos (launch_db)'
       kubernetes.launchPods -> kubernetes.rabbitMqPods 'publica evento LaunchRegistered'
   
       kubernetes.rabbitMqPods -> kubernetes.balanceWorkerPods 'entrega eventos'
-      kubernetes.balanceWorkerPods -> kubernetes.postgresBalance 'atualiza saldo diário'
-      kubernetes.balanceServicePods -> kubernetes.postgresBalance 'consulta saldo consolidado'
+      kubernetes.balanceWorkerPods -> kubernetes.postgresCluster 'atualiza saldo diário (daily_balance_db)'
+      kubernetes.balanceServicePods -> kubernetes.postgresCluster 'consulta saldo consolidado (daily_balance_db)'
   
-      kubernetes.keda -> kubernetes.balanceWorkerPods 'escala por profundidade da fila'
+      kubernetes.keda -> kubernetes.balanceWorkerPods 'escala por profundidade da fila (KEDA)'
+      kubernetes.keda -> kubernetes.balanceServicePods 'escala por CPU/memória (HPA)'
+      kubernetes.keda -> kubernetes.launchPods 'escala por CPU/memória (HPA)'
       kubernetes.istio -> kubernetes.launchPods 'aplica mTLS, retries e políticas'
       kubernetes.istio -> kubernetes.balanceServicePods 'aplica mTLS, retries e políticas'
+      kubernetes.istio -> kubernetes.bffPods 'aplica mTLS, retries e políticas'
   
-      kubernetes.launchPods -> kubernetes.otel 'envia telemetria'
-      kubernetes.balanceServicePods -> kubernetes.otel 'envia telemetria'
-      kubernetes.balanceWorkerPods -> kubernetes.otel 'envia telemetria'
+      kubernetes.launchPods -> kubernetes.otel 'envia telemetria OTLP'
+      kubernetes.balanceServicePods -> kubernetes.otel 'envia telemetria OTLP'
+      kubernetes.balanceWorkerPods -> kubernetes.otel 'envia telemetria OTLP'
+      kubernetes.bffPods -> kubernetes.otel 'envia telemetria OTLP'
   
       kubernetes.otel -> kubernetes.prometheus 'exporta métricas'
       kubernetes.otel -> kubernetes.loki 'exporta logs'
+      kubernetes.otel -> kubernetes.tempo 'exporta traces'
       kubernetes.prometheus -> kubernetes.grafana 'fornece métricas'
       kubernetes.loki -> kubernetes.grafana 'fornece logs'
+      kubernetes.tempo -> kubernetes.grafana 'fornece traces'
     }
   
     merchant -> cashflow.frontend 'acessa pelo navegador'
@@ -236,12 +272,13 @@
     }
   
     view of cashflow {
-      title 'C4 Level 2 - Container View'
+      title 'C4 Level 2 - Container View (MVP executável)'
   
       include
         merchant,
         frontend,
         bff,
+        bffDb,
         launchService,
         launchDb,
         broker,
@@ -252,7 +289,7 @@
     }
   
     view of cashflow.kubernetes {
-      title 'C4 Deployment View - Kubernetes Runtime'
+      title 'C4 Deployment View - Kubernetes (Arquitetura Alvo)'
   
       include *
     }
