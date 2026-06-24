@@ -6,6 +6,7 @@ import {
   TransactionOutlined,
   BarChartOutlined,
   ExperimentOutlined,
+  TeamOutlined,
   LogoutOutlined,
   UserOutlined,
   MenuFoldOutlined,
@@ -21,12 +22,13 @@ const NAV_ITEMS = [
   { key: '/', icon: <DashboardOutlined />, label: <Link to="/">Dashboard</Link> },
   { key: '/launches', icon: <TransactionOutlined />, label: <Link to="/launches">Lançamentos</Link> },
   { key: '/balance', icon: <BarChartOutlined />, label: <Link to="/balance">Saldo Diário</Link> },
-  { key: '/coverage', icon: <ExperimentOutlined />, label: <Link to="/coverage">Testes & Cobertura</Link> },
+  { key: '/users', icon: <TeamOutlined />, label: <Link to="/users">Usuários</Link> },
+  { key: '/tests', icon: <ExperimentOutlined />, label: <Link to="/tests">Testes & Cobertura</Link> },
 ]
 
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
-  const { logout } = useAuth()
+  const { logout, userEmail } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const { token } = theme.useToken()
@@ -107,7 +109,7 @@ export function AppLayout() {
           <Dropdown menu={userMenu} placement="bottomRight">
             <Space style={{ cursor: 'pointer' }}>
               <Avatar icon={<UserOutlined />} style={{ backgroundColor: token.colorPrimary }} />
-              <Text>Admin</Text>
+              <Text>{userEmail ?? 'Usuário'}</Text>
             </Space>
           </Dropdown>
         </Header>

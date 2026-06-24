@@ -129,4 +129,35 @@ public class LaunchRegisteredConsumerTests
         var balance = await db.DailyBalances.FirstAsync(b => b.Date == date);
         balance.TotalCredits.Should().Be(200m);
     }
+
+    [Fact]
+    public async Task Consume_WhenSaveFails_ShouldRethrow()
+    {
+        var options = new DbContextOptionsBuilder<WorkerDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var db = new FailingWorkerDbContext(options);
+        var consumer = new LaunchRegisteredConsumer(db, NullLogger<LaunchRegisteredConsumer>.Instance);
+
+        var context = Substitute.For<ConsumeContext<LaunchRegisteredEvent>>();
+        context.Message.Returns(new LaunchRegisteredEvent
+        {
+            LaunchId = Guid.NewGuid(),
+            Date = new DateOnly(2026, 6, 17),
+            Amount = 10m,
+            Type = "credit",
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CancellationToken.Returns(CancellationToken.None);
+
+        var act = async () => await consumer.Consume(context);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    private sealed class FailingWorkerDbContext(DbContextOptions<WorkerDbContext> options) : WorkerDbContext(options)
+    {
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromException<int>(new InvalidOperationException("simulated failure"));
+    }
 }

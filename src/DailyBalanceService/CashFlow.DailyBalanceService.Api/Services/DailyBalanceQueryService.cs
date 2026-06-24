@@ -1,14 +1,31 @@
 using CashFlow.DailyBalanceService.Api.Data;
 using CashFlow.DailyBalanceService.Api.DTOs;
 using CashFlow.DailyBalanceService.Api.Middleware;
+using CashFlow.Observability;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CashFlow.DailyBalanceService.Api.Services;
 
-public class DailyBalanceQueryService(BalanceDbContext db, ILogger<DailyBalanceQueryService> logger)
+public class DailyBalanceQueryService(
+    BalanceDbContext db,
+    IMemoryCache cache,
+    ILogger<DailyBalanceQueryService> logger)
 {
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
+
+    private static string CacheKey(DateOnly date) => $"balance:{date:yyyy-MM-dd}";
+
     public async Task<DailyBalanceResponse> GetByDateAsync(DateOnly date, CancellationToken ct)
     {
+        CashFlowMeters.BalanceQueries.Add(1);
+
+        if (cache.TryGetValue(CacheKey(date), out DailyBalanceResponse? cached) && cached is not null)
+        {
+            logger.LogDebug("[application] Cache hit for Date={Date}", date);
+            return cached;
+        }
+
         logger.LogDebug("[application] Querying consolidated balance for Date={Date}", date);
 
         var balance = await db.DailyBalances
@@ -24,12 +41,15 @@ public class DailyBalanceQueryService(BalanceDbContext db, ILogger<DailyBalanceQ
         logger.LogInformation("[business] Balance retrieved for Date={Date} Consolidated={Balance}",
             date, balance.ConsolidatedBalance);
 
-        return new DailyBalanceResponse(
+        var response = new DailyBalanceResponse(
             balance.Date,
             balance.TotalCredits,
             balance.TotalDebits,
             balance.ConsolidatedBalance,
             balance.UpdatedAt);
+
+        cache.Set(CacheKey(date), response, CacheTtl);
+        return response;
     }
 
     public async Task<IReadOnlyList<DailyBalanceResponse>> GetByPeriodAsync(DateOnly from, DateOnly to, CancellationToken ct)

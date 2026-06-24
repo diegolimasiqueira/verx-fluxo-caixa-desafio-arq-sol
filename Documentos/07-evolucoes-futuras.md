@@ -4,11 +4,25 @@ Este documento registra decisões de escopo e evoluções planejadas que não fo
 
 ---
 
-## O Que Gostaria de Ter Implementado
+## O Que Foi Implementado (MVP)
+
+O MVP atual inclui código funcional e executável dos seguintes componentes:
+
+- **BFF (.NET 10):** ponto único do canal web com autenticação JWT, RBAC (`admin`/`merchant`), rate limiting, security headers e proxy para microserviços
+- **Launch Service:** API REST com validações de negócio, persistência via EF Core, publicação de eventos via MassTransit/RabbitMQ, testes de unidade e integração
+- **Daily Balance Worker:** Consumer MassTransit com lógica de consolidação idempotente, retry na fila, testes de unidade e integração (Testcontainers)
+- **Daily Balance Service:** API REST somente-leitura com cache `IMemoryCache` (TTL 5 min), testes de unidade e integração
+- **Frontend React:** SPA completa — login, lançamentos, consulta de saldo por data, gestão de usuários (admin), painel de relatórios de testes (`/tests`)
+- **Observabilidade:** OpenTelemetry SDK (métricas + logs OTLP) → Collector → Prometheus + Loki → Grafana (dashboard básico)
+- **Testes:** cobertura 100% linha/branch (xUnit + Testcontainers), E2E Playwright, carga k6 50 req/s
+
+---
+
+## O Que Gostaria de Ter Implementado com Mais Tempo
 
 ### 1. Arquitetura de Transição (Migração de Legado)
 
-Caso a solução partisse de um sistema legado (ex.: planilha, sistema monolítico ou serviço legado de controle financeiro), a estratégia de migração seria:
+Caso a solução partisse de um sistema legado (ex.: planilha, sistema monolítico), a estratégia de migração seria:
 
 **Fase 1 — Strangler Fig Pattern:**
 - Criar o Launch Service em paralelo ao legado
@@ -28,41 +42,11 @@ Esta view de transição seria adicionada ao modelo C4 como **C4 Level 1 — Tra
 
 ---
 
-### 2. Implementação Completa dos Serviços
+### 2. Outbox Pattern para Garantia de Entrega
 
-A implementação atual é parcial (arquitetural/documental). O que seria implementado com mais tempo:
+**Risco atual:** o Launch Service grava no banco e publica o evento em seguida, em duas operações separadas. Se o processo morrer entre as duas, o lançamento existe no banco mas o evento nunca chega ao Worker — o saldo não é consolidado.
 
-- **Launch Service:** API REST completa com validações, persistência via EF Core, publicação de eventos com MassTransit (RabbitMQ), testes de unidade e integração
-- **Daily Balance Worker:** Consumer MassTransit, lógica de consolidação idempotente, tratamento de DLQ
-- **Daily Balance Service:** API REST de leitura com paginação e cache em memória (IMemoryCache ou Redis)
-- **BFF:** Aggregation de chamadas, validação JWT, rate limiting com `AspNetCoreRateLimit`
-- **Frontend React:** Formulário de lançamentos, listagem por data e exibição de saldo diário
-
----
-
-### 3. Cache de Leitura no Daily Balance Service
-
-Para suportar 50 req/s com latência < 300ms, a estratégia de cache seria:
-
-```
-[ Daily Balance Service ]
-        |
-        ├── Cache Hit  --> [ Redis ] (< 5ms)
-        └── Cache Miss --> [ PostgreSQL Balance ] --> atualiza Redis
-```
-
-- **Redis** como cache de segunda camada para saldos consolidados
-- TTL de 60 segundos (saldo tem granularidade diária, atualização assíncrona)
-- Invalidação de cache via evento do worker após cada consolidação
-- Reduz carga no banco em ~80% nos picos
-
----
-
-### 4. Outbox Pattern para Garantia de Entrega
-
-O risco atual: se o Launch Service gravar no banco mas falhar antes de publicar o evento no RabbitMQ, a consolidação não ocorre.
-
-A solução seria o **Transactional Outbox Pattern**:
+A solução é o **Transactional Outbox Pattern**:
 
 ```
 [ Launch Service ]
@@ -77,17 +61,36 @@ A solução seria o **Transactional Outbox Pattern**:
   └── UPDATE outbox_events SET status = 'published'
 ```
 
-Garantia: a mensagem só é publicada após a transação ser confirmada. Implementável com **MassTransit Outbox** (suporte nativo via EF Core).
+Garantia: a mensagem só é publicada após a transação ser confirmada. Implementável com **MassTransit Outbox** (suporte nativo via EF Core) — sem alteração de código no consumidor.
 
 ---
 
-### 5. Identity Provider Dedicado
+### 3. Cache Redis no Daily Balance Service
 
-Em vez de validar tokens JWT diretamente no BFF, integrar um IdP:
+O MVP implementa `IMemoryCache` (in-process, TTL 5 min), suficiente para o volume atual. Para produção com múltiplas réplicas, o cache precisa ser distribuído:
+
+```
+[ Daily Balance Service — Réplica 1 ]
+[ Daily Balance Service — Réplica 2 ]
+        |
+        └──> [ Redis ] (cache compartilhado entre réplicas)
+                |
+                └── Cache Miss --> [ PostgreSQL Balance ]
+```
+
+- **Redis** com TTL configurável (ex.: 60s — granularidade diária do saldo)
+- Invalidação via evento do Worker após cada consolidação
+- `IMemoryCache` atual seria substituído por `IDistributedCache` com Redis — sem alteração de lógica de negócio
+
+---
+
+### 4. Identity Provider Dedicado
+
+Substituir o login local do BFF (`bff_db`) por um IdP externo quando houver necessidade de MFA, multi-tenancy ou políticas corporativas centralizadas:
 
 - **Keycloak** (self-hosted, open-source): gestão de usuários, roles, OAuth2/OIDC completo
 - Ou **Auth0** / **AWS Cognito** como serviço gerenciado
-- Permite multi-tenancy (múltiplos comerciantes), MFA e políticas de senha centralizadas
+- O BFF passaria a validar tokens emitidos pelo IdP em vez de gerá-los localmente
 
 ---
 
@@ -97,30 +100,27 @@ Para escalar o produto para múltiplos comerciantes:
 
 - **Tenant ID** extraído do JWT e propagado em todos os serviços via header `X-Tenant-Id`
 - **Row-Level Security (RLS)** no PostgreSQL por tenant
-- Ou schema separado por tenant (tenant isolation mais forte, custo operacional maior)
 - Cada comerciante vê apenas seus próprios lançamentos e saldos
 
 ---
 
 ### 7. API de Relatórios / Exportação
 
-Capacidade adicional de negócio para o futuro:
-
 - Exportação de lançamentos em CSV/Excel por período
 - Relatório de fluxo de caixa projetado (baseado em histórico)
-- Implementado como serviço separado de leitura (CQRS Read Model adicional) para não impactar o serviço de consulta principal
+- Implementado como serviço separado de leitura (CQRS Read Model adicional)
 
 ---
 
 ### 8. Event Sourcing
 
-Para um sistema financeiro, manter o log imutável de eventos como fonte de verdade:
+Para um sistema financeiro com auditoria completa:
 
 - Em vez de persistir o estado atual do saldo, persistir todos os eventos (`LaunchRegistered`) em um event store
-- O saldo seria um projection dos eventos
-- Habilitaria auditoria completa, time-travel queries e reprocessamento de saldo para qualquer data
+- O saldo seria uma projection dos eventos
+- Habilitaria time-travel queries e reprocessamento de saldo para qualquer data
 
-Trade-off: maior complexidade operacional e de desenvolvimento. Adequado para estágio de maturidade posterior.
+Trade-off: maior complexidade operacional. Adequado para estágio de maturidade posterior.
 
 ---
 
@@ -128,10 +128,10 @@ Trade-off: maior complexidade operacional e de desenvolvimento. Adequado para es
 
 | Fase | O Que | Quando |
 |---|---|---|
-| **MVP** | Launch Service + Daily Balance Worker + Daily Balance Service (sem BFF/Frontend) | Sprint 1-2 |
-| **Canal** | BFF + Frontend React básico | Sprint 3 |
-| **Resiliência** | Outbox Pattern + DLQ + Circuit Breaker explícito | Sprint 4 |
-| **Performance** | Cache Redis no Daily Balance Service | Sprint 5 |
-| **Segurança** | Keycloak + mTLS completo via Istio | Sprint 6 |
+| **MVP** (entregue) | BFF + Frontend + auth local + microserviços + OTel métricas/logs/traces (Tempo) | Sprint 1-3 |
+| **Resiliência** | Outbox Pattern + Circuit Breaker explícito | Sprint 4 |
+| **Observabilidade avançada** | Alertas Prometheus + SLO burn rate + dashboards K8s | Sprint 4 |
+| **Performance** | Cache Redis distribuído no Daily Balance Service | Sprint 5 |
+| **Segurança avançada** | Keycloak/OIDC + mTLS via Istio | Sprint 6+ |
 | **Multi-tenancy** | Tenant ID + RLS no banco | Sprint 7-8 |
 | **Relatórios** | Serviço de exportação e relatórios | Sprint 9+ |

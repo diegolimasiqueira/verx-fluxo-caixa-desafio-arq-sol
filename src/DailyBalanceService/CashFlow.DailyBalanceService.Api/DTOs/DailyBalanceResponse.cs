@@ -8,9 +8,3 @@ public record DailyBalanceResponse(
     decimal ConsolidatedBalance,
     DateTime UpdatedAt
 );
-
-/// <summary>Credenciais para autenticação.</summary>
-public record LoginRequest(string Username, string Password);
-
-/// <summary>Token JWT retornado após autenticação bem-sucedida.</summary>
-public record LoginResponse(string AccessToken, string TokenType, int ExpiresIn);

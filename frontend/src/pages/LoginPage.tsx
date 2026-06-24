@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, Input, Button, Card, Typography, Alert, Space } from 'antd'
-import { UserOutlined, LockOutlined, DollarCircleOutlined } from '@ant-design/icons'
+import { MailOutlined, LockOutlined, DollarCircleOutlined } from '@ant-design/icons'
 import { useAuth } from '@/contexts/AuthContext'
 import type { LoginRequest } from '@/types'
 
@@ -20,7 +20,7 @@ export function LoginPage() {
       await login(values)
       navigate('/')
     } catch {
-      setError('Credenciais inválidas. Use admin / admin.')
+      setError('E-mail ou senha inválidos.')
     } finally {
       setLoading(false)
     }
@@ -50,13 +50,16 @@ export function LoginPage() {
           <Alert message={error} type="error" showIcon style={{ marginBottom: 24 }} />
         )}
 
-        <Form layout="vertical" onFinish={handleSubmit} initialValues={{ username: 'admin', password: 'admin' }}>
+        <Form layout="vertical" onFinish={handleSubmit}>
           <Form.Item
-            label="Usuário"
-            name="username"
-            rules={[{ required: true, message: 'Informe o usuário' }]}
+            label="E-mail"
+            name="email"
+            rules={[
+              { required: true, message: 'Informe o e-mail' },
+              { type: 'email', message: 'E-mail inválido' },
+            ]}
           >
-            <Input prefix={<UserOutlined />} placeholder="admin" size="large" />
+            <Input prefix={<MailOutlined />} placeholder="admin@admin.com" size="large" />
           </Form.Item>
 
           <Form.Item
@@ -64,7 +67,7 @@ export function LoginPage() {
             name="password"
             rules={[{ required: true, message: 'Informe a senha' }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="admin" size="large" />
+            <Input.Password prefix={<LockOutlined />} placeholder="Senha" size="large" />
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 0 }}>

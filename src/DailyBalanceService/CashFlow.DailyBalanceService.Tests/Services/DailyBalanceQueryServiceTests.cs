@@ -4,6 +4,7 @@ using CashFlow.DailyBalanceService.Api.Middleware;
 using CashFlow.DailyBalanceService.Api.Services;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CashFlow.DailyBalanceService.Tests.Services;
@@ -33,7 +34,7 @@ public class DailyBalanceQueryServiceTests
         });
         await db.SaveChangesAsync();
 
-        var service = new DailyBalanceQueryService(db, NullLogger<DailyBalanceQueryService>.Instance);
+        var service = new DailyBalanceQueryService(db, new MemoryCache(new MemoryCacheOptions()), NullLogger<DailyBalanceQueryService>.Instance);
         var result = await service.GetByDateAsync(date, CancellationToken.None);
 
         result.Date.Should().Be(date);
@@ -46,7 +47,7 @@ public class DailyBalanceQueryServiceTests
     public async Task GetByDate_WhenBalanceDoesNotExist_ShouldThrowNotFoundException()
     {
         var db = CreateInMemoryContext();
-        var service = new DailyBalanceQueryService(db, NullLogger<DailyBalanceQueryService>.Instance);
+        var service = new DailyBalanceQueryService(db, new MemoryCache(new MemoryCacheOptions()), NullLogger<DailyBalanceQueryService>.Instance);
         var date = new DateOnly(2026, 6, 17);
 
         var act = async () => await service.GetByDateAsync(date, CancellationToken.None);
@@ -67,7 +68,7 @@ public class DailyBalanceQueryServiceTests
         );
         await db.SaveChangesAsync();
 
-        var service = new DailyBalanceQueryService(db, NullLogger<DailyBalanceQueryService>.Instance);
+        var service = new DailyBalanceQueryService(db, new MemoryCache(new MemoryCacheOptions()), NullLogger<DailyBalanceQueryService>.Instance);
         var result = await service.GetByPeriodAsync(
             new DateOnly(2026, 6, 17),
             new DateOnly(2026, 6, 19),
@@ -80,10 +81,31 @@ public class DailyBalanceQueryServiceTests
     }
 
     [Fact]
+    public async Task GetByDate_SecondCall_ShouldReturnFromCache()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var db = CreateInMemoryContext();
+        var date = new DateOnly(2026, 6, 17);
+        db.DailyBalances.Add(new DailyBalance
+        {
+            Date = date,
+            TotalCredits = 50m,
+            TotalDebits = 10m,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var service = new DailyBalanceQueryService(db, cache, NullLogger<DailyBalanceQueryService>.Instance);
+        var first = await service.GetByDateAsync(date, CancellationToken.None);
+        var second = await service.GetByDateAsync(date, CancellationToken.None);
+        second.Should().BeEquivalentTo(first);
+    }
+
+    [Fact]
     public async Task GetByPeriod_ShouldReturnEmptyListWhenNoData()
     {
         var db = CreateInMemoryContext();
-        var service = new DailyBalanceQueryService(db, NullLogger<DailyBalanceQueryService>.Instance);
+        var service = new DailyBalanceQueryService(db, new MemoryCache(new MemoryCacheOptions()), NullLogger<DailyBalanceQueryService>.Instance);
 
         var result = await service.GetByPeriodAsync(
             new DateOnly(2026, 6, 1),

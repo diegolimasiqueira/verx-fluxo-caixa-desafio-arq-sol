@@ -7,10 +7,13 @@ build-output/
 .vs/
 *.DotSettings.user
 
-# Coverage
+# Coverage / quality gates
 coverage-results/
 TestResults/
 frontend/public/coverage/
+.k6-out/
+load-summary-raw.json
+frontend/e2e-report-raw.json
 
 # NuGet
 *.nupkg

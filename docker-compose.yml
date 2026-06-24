@@ -18,6 +18,23 @@ services:
       retries: 10
     restart: unless-stopped
 
+  db-init:
+    image: postgres:16-alpine
+    container_name: cashflow-db-init
+    environment:
+      PGPASSWORD: postgres123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        psql -h postgres -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='bff_db'" | grep -q 1 \
+          || psql -h postgres -U postgres -c "CREATE DATABASE bff_db OWNER cashflow;"
+        psql -h postgres -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE bff_db TO cashflow;"
+        echo "db-init OK"
+    restart: "no"
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: cashflow-rabbitmq
@@ -32,6 +49,36 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+    restart: unless-stopped
+
+  bff:
+    build:
+      context: .
+      dockerfile: src/Bff/CashFlow.Bff.Api/Dockerfile
+    container_name: cashflow-bff
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=bff_db;Username=cashflow;Password=cashflow123"
+      Jwt__Secret: "cashflow-super-secret-key-for-jwt-signing-minimum-32-chars"
+      Jwt__Issuer: "cashflow-launch-service"
+      Jwt__Audience: "cashflow-platform"
+      Services__Launch: "http://launch-service:8080"
+      Services__Balance: "http://daily-balance-service:8080"
+      Cors__Origins__0: "http://localhost:3000"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "5000:8080"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      launch-service:
+        condition: service_started
+      daily-balance-service:
+        condition: service_started
     restart: unless-stopped
 
   launch-service:
@@ -49,8 +96,8 @@ services:
       Jwt__Secret: "cashflow-super-secret-key-for-jwt-signing-minimum-32-chars"
       Jwt__Issuer: "cashflow-launch-service"
       Jwt__Audience: "cashflow-platform"
-    ports:
-      - "5001:8080"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,8 +117,8 @@ services:
       Jwt__Secret: "cashflow-super-secret-key-for-jwt-signing-minimum-32-chars"
       Jwt__Issuer: "cashflow-launch-service"
       Jwt__Audience: "cashflow-platform"
-    ports:
-      - "5002:8080"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,16 +130,85 @@ services:
       dockerfile: src/DailyBalanceWorker/CashFlow.DailyBalanceWorker/Dockerfile
     container_name: cashflow-daily-balance-worker
     environment:
-      DOTNET_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=daily_balance_db;Username=cashflow;Password=cashflow123"
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Username: guest
       RabbitMQ__Password: guest
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    container_name: cashflow-otel-collector
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./infra/observability/otel-collector/config.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    depends_on:
+      - loki
+      - tempo
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: cashflow-prometheus
+    volumes:
+      - ./infra/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: cashflow-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./infra/observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: cashflow-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/observability/tempo/tempo.yml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: cashflow-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: cashflow123
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
     restart: unless-stopped
 
   frontend:
@@ -103,9 +219,11 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - launch-service
-      - daily-balance-service
+      - bff
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  loki_data:
+  grafana_data:
+  tempo_data:

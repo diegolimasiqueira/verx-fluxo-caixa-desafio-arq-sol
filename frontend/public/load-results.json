@@ -1,0 +1,17 @@
+{
+  "status": "pending",
+  "message": "Execute ./scripts/run-quality-gates.sh com a stack rodando.",
+  "generatedAt": null,
+  "targetRps": 50,
+  "achievedRps": 0,
+  "durationSeconds": 0,
+  "totalRequests": 0,
+  "errorRate": 0,
+  "p95LatencyMs": 0,
+  "thresholds": {
+    "maxErrorRate": 0.05,
+    "errorRatePassed": false,
+    "minAchievedRps": 47.5,
+    "targetRpsPassed": false
+  }
+}

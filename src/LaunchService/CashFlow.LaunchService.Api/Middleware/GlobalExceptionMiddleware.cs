@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using CashFlow.Observability;
 
 namespace CashFlow.LaunchService.Api.Middleware;
 
@@ -13,6 +14,7 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
         }
         catch (DomainException ex)
         {
+            CashFlowMeters.LaunchValidationErrors.Add(1);
             logger.LogWarning("[business] Domain rule violation: {Message}", ex.Message);
             await WriteErrorResponse(context, HttpStatusCode.UnprocessableEntity, "Business rule violation", ex.Message);
         }

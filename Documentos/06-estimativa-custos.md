@@ -121,7 +121,7 @@ Para organizações com datacenter próprio ou VMs dedicadas:
 
 1. **Spot/Preemptible Instances** para workers stateless: redução de até 70% no custo de compute dos pods do Daily Balance Worker
 2. **Reserved Instances (1 ano)** para nós base do cluster: redução de 30-40%
-3. **Escalamento a zero** do Daily Balance Service fora do horário comercial (KEDA + HPA com `minReplicas: 0`)
+3. **Escalamento a zero** do Daily Balance **Worker** fora do horário comercial (KEDA com `minReplicaCount: 0` — quando a fila está vazia). O Daily Balance **Service** (API de leitura) mantém `minReplicas: 1` para evitar cold start na resposta ao usuário
 4. **Retenção de logs** configurada por camada: 7 dias hot, 30 dias warm, 90 dias cold (S3/GCS)
 
 ---

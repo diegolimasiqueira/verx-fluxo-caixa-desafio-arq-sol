@@ -1,92 +1,116 @@
 # Monitoramento e Observabilidade
 
-## Stack de Observabilidade
+## Stack Implementada (MVP)
 
 ```
-[ Serviços / Workers ]
-       |
+[ Serviços .NET (BFF, Launch, Balance, Worker) ]
+       | OTLP gRPC (métricas + logs + traces)
        v
 [ OpenTelemetry Collector ]
        |
-       ├──> [ Prometheus ]  ──> [ Grafana ]
-       └──> [ Loki ]        ──> [ Grafana ]
+       ├──> [ Prometheus :8889 ]  ──> [ Grafana :3001 ]
+       ├──> [ Loki :3100 ]        ──> [ Grafana :3001 ]
+       └──> [ Tempo :4317 ]       ──> [ Grafana :3001 ]
 ```
 
-Todos os serviços instrumentam via **OpenTelemetry SDK** (.NET) e enviam para o Collector, que centraliza o roteamento para os backends de métricas e logs.
+Todos os serviços exportam via **OpenTelemetry SDK** (.NET) diretamente para o Collector (OTLP sobre gRPC na porta 4317). O Collector centraliza o roteamento para os backends.
+
+**Serviços não expõem `/metrics` diretamente** — o endpoint de scrape Prometheus é `otel-collector:8889`.
 
 ---
 
-## Os Três Pilares
+## O Que Está Instrumentado (MVP)
 
-### 1. Métricas (Prometheus)
+### Métricas (Prometheus)
 
-Cada serviço expõe o endpoint `/metrics` (Prometheus scrape format) via OpenTelemetry.
+Instrumentação automática (via OpenTelemetry SDK):
 
-**Métricas instrumentadas por serviço:**
+| Fonte | Exemplos de métricas |
+|---|---|
+| ASP.NET Core | `http_server_request_duration_seconds` (histogram), `http_server_active_requests` |
+| HttpClient | `http_client_request_duration_seconds` (histogram) |
+| .NET Runtime | GC, memória, threads, exceções |
+
+Métricas de negócio customizadas (`CashFlow.Platform` meter):
 
 | Métrica | Tipo | Descrição |
 |---|---|---|
-| `launch_registrations_total` | Counter | Total de lançamentos registrados |
-| `launch_registration_duration_ms` | Histogram | Latência de registro de lançamento |
-| `launch_validation_errors_total` | Counter | Erros de validação de lançamento |
-| `daily_balance_queries_total` | Counter | Total de consultas de saldo |
-| `daily_balance_query_duration_ms` | Histogram | Latência de consulta de saldo |
-| `rabbitmq_queue_depth` | Gauge | Profundidade da fila `launch.registered` |
-| `worker_consolidation_duration_ms` | Histogram | Latência de consolidação por evento |
-| `worker_consolidation_errors_total` | Counter | Falhas de consolidação |
-| `worker_dlq_messages_total` | Counter | Mensagens enviadas para DLQ |
+| `cashflow_launch_registrations_total` | Counter | Lançamentos registrados com sucesso |
+| `cashflow_launch_validation_errors_total` | Counter | Erros de validação de lançamento |
+| `cashflow_daily_balance_queries_total` | Counter | Consultas de saldo consolidado |
+| `cashflow_worker_consolidations_total` | Counter | Eventos consolidados pelo worker |
+| `cashflow_worker_consolidation_errors_total` | Counter | Falhas de consolidação no worker |
 
-### 2. Logs (Loki)
+### Logs (Loki)
 
-Logs estruturados em formato JSON, emitidos via `ILogger` + OpenTelemetry Log Bridge.
+Logs estruturados em formato JSON via `ILogger` + OpenTelemetry Log Bridge (OTLP → Collector → Loki).
 
-**Campos obrigatórios em todos os logs:**
+**Campos emitidos em todos os logs:**
 
 ```json
 {
-  "timestamp": "2026-06-17T21:00:00Z",
-  "level": "Information",
-  "service": "launch-service",
-  "traceId": "abc123...",
-  "spanId": "def456...",
-  "message": "Lançamento registrado com sucesso",
-  "launchId": "uuid",
-  "userId": "uuid"
+  "Timestamp": "2026-06-17T21:00:00.000Z",
+  "LogLevel": "Information",
+  "Category": "CashFlow.LaunchService.Api.Services.LaunchAppService",
+  "Message": "[business] Launch registered. Id=... Date=... Type=... Amount=...",
+  "EventId": 0
 }
 ```
 
+**Prefixos de contexto usados no código:**
+- `[business]` — operações de domínio (lançamento registrado, saldo atualizado)
+- `[application]` — operações de aplicação (cache hit, query, evento publicado)
+
 **Níveis de log por cenário:**
 
-| Nível | Quando usar |
+| Nível | Quando |
 |---|---|
-| `Debug` | Detalhes de execução (apenas dev) |
+| `Debug` | Cache hit, queries internas |
 | `Information` | Operações bem-sucedidas (lançamento registrado, saldo atualizado) |
-| `Warning` | Falha de autenticação, retry de mensagem, lag de fila elevado |
-| `Error` | Exceção não tratada, falha de persistência, mensagem na DLQ |
-| `Critical` | Falha total de componente (banco inacessível, broker fora) |
+| `Warning` | Falha de autenticação, retry de mensagem |
+| `Error` | Exceção não tratada, falha de consolidação |
 
-**Dados financeiros nunca devem aparecer em logs** (valores, descrições sensíveis). Usar mascaramento ou omitir campos.
-
-### 3. Traces Distribuídos (OpenTelemetry → Tempo / Jaeger)
-
-Cada requisição gera um `traceId` propagado por todos os serviços via headers `traceparent` (W3C Trace Context).
-
-**Spans instrumentados:**
-
-- `POST /launches` → span raiz no BFF → span no Launch Service → span na gravação do banco → span na publicação do evento
-- `GET /balance/{date}` → span raiz no BFF → span no Daily Balance Service → span na leitura do banco
-- Consumo de mensagem no Worker → span de consumo → span de atualização do banco
+> **Atenção:** dados financeiros (valores) são passados como parâmetros estruturados de log — avalie mascaramento em produção caso seja necessário.
 
 ---
 
-## SLIs e SLOs
+### Traces Distribuídos (implementado)
+
+`WithTracing()` configurado nos serviços com `AddAspNetCoreInstrumentation()` e `AddHttpClientInstrumentation()`. Pipeline de traces no Collector exporta para **Grafana Tempo** via OTLP.
+
+**Traces gerados automaticamente:**
+- Cada requisição HTTP recebida gera um span raiz (`http.server.*`)
+- Chamadas HTTP de saída (BFF → microserviços) geram spans filho (`http.client.*`)
+- O `trace_id` correlaciona spans entre serviços para rastreabilidade ponta a ponta
+
+**Como visualizar:** Grafana → Explore → datasource Tempo → pesquisar por `service.name`.
+
+---
+
+## O Que Não Foi Implementado (Evolução Futura)
+
+### Histogramas de latência por operação de negócio
+
+Os histogramas automáticos do ASP.NET Core cobrem latência HTTP geral. Histogramas por operação de negócio específica (ex.: `launch_registration_duration_ms`) não foram criados. Extensão direta do `CashFlowMeters.cs`.
+
+### Profundidade da fila RabbitMQ
+
+A métrica `rabbitmq_queue_depth` não está instrumentada. Pode ser coletada via plugin RabbitMQ Prometheus (`/metrics` nativo do RabbitMQ 3.8+) ou via scrape da Management API.
+
+### Alertas Prometheus
+
+Não há `PrometheusRule` ou arquivo de alertas configurado. O Prometheus do MVP apenas armazena métricas — alertas requerem `alertmanager` e regras definidas.
+
+---
+
+## SLIs e SLOs (referência arquitetural)
 
 ### Launch Service
 
 | SLI | Métrica | SLO |
 |---|---|---|
 | Disponibilidade | `% requisições com HTTP 2xx ou 4xx / total` | ≥ 99,9% |
-| Latência P95 | `launch_registration_duration_ms[p95]` | < 200ms |
+| Latência P95 | `http_server_request_duration_seconds` p95 | < 200ms |
 | Taxa de erro | `% requisições com HTTP 5xx / total` | < 0,1% |
 
 ### Daily Balance Service
@@ -94,47 +118,45 @@ Cada requisição gera um `traceId` propagado por todos os serviços via headers
 | SLI | Métrica | SLO |
 |---|---|---|
 | Disponibilidade | `% requisições com HTTP 2xx ou 4xx / total` | ≥ 99,5% |
-| Latência P95 | `daily_balance_query_duration_ms[p95]` | < 300ms |
+| Latência P95 | `http_server_request_duration_seconds` p95 | < 300ms |
 | Throughput | Requisições por segundo | ≥ 47,5 req/s (95% de 50) |
 
 ### Daily Balance Worker
 
 | SLI | Métrica | SLO |
 |---|---|---|
-| Lag de consolidação | Tempo médio entre publicação do evento e atualização do saldo | < 30s |
-| Taxa de falha | `worker_consolidation_errors_total / worker_consolidation_total` | < 1% |
-| DLQ | Mensagens na DLQ | = 0 (alerta imediato) |
+| Taxa de falha | `cashflow_worker_consolidation_errors_total / cashflow_worker_consolidations_total` | < 1% |
+| Lag de consolidação | Tempo entre publicação do evento e atualização do saldo | < 30s (observação manual) |
 
 ---
 
-## Dashboards Grafana
+## Dashboard Grafana (MVP)
 
-### Dashboard: Visão Operacional
-- Status de saúde dos serviços (UP/DOWN)
-- Throughput atual vs. SLO
-- Latência P50/P95/P99 por serviço
-- Taxa de erro por serviço
+O dashboard **CashFlow — Overview** é provisionado automaticamente em `http://localhost:3001` (user: `admin` / pass: `cashflow123`), folder **CashFlow**.
 
-### Dashboard: Fila e Worker
-- Profundidade da fila `launch.registered` (tempo real)
-- Taxa de processamento do worker (eventos/segundo)
-- Lag de consolidação médio
-- Réplicas ativas do worker (escalonamento KEDA)
+**Painéis disponíveis:**
+- HTTP req/s por serviço (série temporal)
+- Latência HTTP p95 por serviço (série temporal)
+- Lançamentos registrados na última hora (stat)
+- Consultas de saldo na última hora (stat)
+- Consolidações do worker na última hora (stat)
+- Erros de validação + consolidação (stat — vermelho se > 0)
+- Métricas de negócio em rate (série temporal)
+- Logs da aplicação via Loki (painel de logs)
 
-### Dashboard: Infraestrutura Kubernetes
-- CPU e memória por pod
-- Número de réplicas por deployment
-- Eventos de escalonamento (HPA/KEDA)
+**Dashboards planejados mas não criados (evolução futura):**
+- Fila RabbitMQ (profundidade + taxa de processamento)
+- Infraestrutura Kubernetes (CPU/memória por pod, réplicas HPA/KEDA)
+- SLO burn rate e alertas
 
 ---
 
-## Alertas
+## Retenção de Logs (MVP)
 
-| Alerta | Condição | Severidade | Ação |
-|---|---|---|---|
-| Launch Service down | `up{service="launch-service"} == 0` | Critical | PagerDuty imediato |
-| Alta latência P95 | `p95 > 500ms por 5min` | Warning | Investigar banco/pod |
-| DLQ com mensagens | `worker_dlq_messages_total > 0` | Error | Análise de mensagem + reprocessamento |
-| Fila crescendo | `rabbitmq_queue_depth > 1000` | Warning | Verificar workers / escalonamento |
-| Taxa de erro > 1% | `http_5xx_rate > 0.01` | Error | Rollback / investigação |
-| Lag de consolidação > 60s | `consolidation_lag_seconds > 60` | Warning | Verificar worker e broker |
+Loki configurado com `retention_period: 168h` (**7 dias**). Para produção, configurar por camada:
+
+| Camada | Período | Storage |
+|---|---|---|
+| Hot | 7 dias | Disco local (Loki) |
+| Warm | 30 dias | Object storage (S3/GCS) |
+| Cold / auditoria | 90 dias | S3 Glacier / Cloud Archive |

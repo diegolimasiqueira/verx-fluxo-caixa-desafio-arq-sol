@@ -2,125 +2,139 @@
 
 ## Modelo de Ameaças
 
-Os principais vetores de ameaça para a plataforma são:
-
 | Ameaça | Superfície | Mitigação |
 |---|---|---|
-| Acesso não autenticado | Canal externo (HTTPS) | JWT obrigatório no BFF |
-| Interceptação de tráfego interno | Comunicação entre pods | mTLS via Istio |
-| Escalonamento de privilégios | API de lançamentos | RBAC no BFF |
+| Acesso não autenticado | Canal externo (HTTP/HTTPS) | JWT obrigatório no BFF |
+| Interceptação de tráfego interno | Comunicação entre pods | mTLS via Istio (produção K8s — ver evolução) |
+| Escalonamento de privilégios | API de lançamentos e usuários | RBAC no BFF |
 | Injeção de dados maliciosos | Payload de lançamentos | Validação e sanitização no serviço |
 | DDoS / abuso de API | BFF público | Rate limiting + throttling |
-| Comprometimento do broker | RabbitMQ | Autenticação com credenciais rotacionadas + VNet isolada |
-| Exposição de dados sensíveis | Logs e traces | Mascaramento de dados financeiros em logs |
+| Comprometimento do broker | RabbitMQ | Credenciais por serviço; VNet isolada em produção |
+| Exposição de dados sensíveis | Logs | Dados financeiros como parâmetros estruturados — avaliar mascaramento em produção |
 
 ---
 
-## Canal Externo (BFF → Frontend)
+## O Que Está Implementado (MVP Local + Docker Compose)
 
 ### Autenticação
-- Todos os endpoints do BFF exigem **JWT Bearer Token** (OAuth2/OIDC)
-- O token é validado no BFF antes de qualquer roteamento downstream
-- Emissor (Identity Provider) deve ser configurável via `OIDC_AUTHORITY` environment variable
-- Tokens com validade curta (≤ 1h) com refresh token rotativo
 
-### Autorização
-- RBAC implementado no BFF com roles extraídas do JWT (`claims`)
-- Role `merchant`: acesso a lançamentos e saldo próprio
-- Role `admin`: acesso a lançamentos e saldos de qualquer comerciante (evolução futura)
+- Login centralizado no **BFF**: e-mail + senha validados contra a tabela `Users` em `bff_db`
+- Senhas armazenadas com hash **PBKDF2-SHA256** (salt por usuário, sem texto plano)
+- Após autenticação, o BFF emite **JWT Bearer** com claims de e-mail, nome e role
+- Endpoints protegidos exigem token válido antes de rotear para microserviços
+- O mesmo token é repassado aos microserviços, que validam assinatura/issuer/audience independentemente
+- Usuário padrão criado na subida: `admin@admin.com` / `Master@123` (role `admin`)
 
-### Proteção de Transporte
-- HTTPS obrigatório via TLS 1.2+ no Ingress Controller (NGINX)
-- HSTS habilitado com `max-age` de 1 ano
-- Headers de segurança: `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`
+> Comunicação local roda em **HTTP** (sem TLS). TLS é responsabilidade do Ingress Controller em produção.
 
-### Rate Limiting
-- Limite de requisições por IP: **100 req/min** (configurável)
-- Limite de requisições por usuário autenticado: **200 req/min**
-- Retorna HTTP 429 com header `Retry-After`
+### Autorização (RBAC)
+
+- Role `merchant`: acesso a lançamentos e saldo
+- Role `admin`: acesso a lançamentos, saldo e gerenciamento de usuários
+
+### Rate Limiting (BFF)
+
+- Limite no login: **10 req/min** por IP
+- Limite nos demais endpoints: **100 req/min** por usuário autenticado (ou IP)
+- Retorna HTTP 429 com header `Retry-After: 60`
+
+### Security Headers (BFF)
+
+Middleware `SecurityHeadersMiddleware` adiciona em todas as respostas:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Content-Security-Policy: default-src 'self'`
+
+### Secrets (MVP Local)
+
+Secrets ficam em variáveis de ambiente no `docker-compose.yml`. Isso é intencional para reduzir atrito na execução local — **não representa prática de produção**.
+
+| Secret | Serviços | Origem no MVP |
+|---|---|---|
+| `Jwt:Secret` | BFF, Launch, Daily Balance | `docker-compose.yml` |
+| Connection strings Postgres | Todos os serviços | `docker-compose.yml` |
+| RabbitMQ user/password | Launch, Worker | `docker-compose.yml` |
 
 ---
 
-## Canal Interno (Service-to-Service)
+## Checklist por Camada
 
-### mTLS via Istio
-- Toda comunicação entre pods no cluster é criptografada com **mTLS automático** (Istio PeerAuthentication)
-- Certificados gerenciados pelo Istio CA (Citadel) com rotação automática
-- Modo: `STRICT` — nenhuma comunicação em plaintext é aceita entre serviços
+### MVP (implementado — Docker Compose local)
 
-### Network Policies
-- Políticas de rede Kubernetes restringem comunicação entre namespaces
-- Launch Service só aceita conexões do BFF
-- Daily Balance Service só aceita conexões do BFF
-- Daily Balance Worker só aceita conexões do RabbitMQ (consumer)
-- Bancos de dados não são acessíveis fora do namespace do domínio
+```
+[ Canal Externo — BFF ]
+  ✓ JWT Bearer (emitido pelo BFF, validado nos microserviços)
+  ✓ Login e-mail/senha com hash PBKDF2-SHA256
+  ✓ RBAC por role (admin / merchant)
+  ✓ Rate limiting (10/min login, 100/min API)
+  ✓ Security headers (X-Frame-Options, X-Content-Type-Options, CSP)
+
+[ Microserviços ]
+  ✓ Validação JWT independente por serviço
+
+[ Secrets ]
+  ✓ Variáveis de ambiente (valores fixos — apenas local)
+  ✗ TLS/HTTPS (HTTP puro no Compose)
+```
+
+### Evolução Futura (produção — Kubernetes)
+
+```
+[ Canal Externo ]
+  → HTTPS/TLS 1.2+ (Ingress Controller com cert-manager)
+  → HSTS max-age 1 ano
+  → IdP externo (ex.: Keycloak/OIDC)
+
+[ Comunicação Interna ]
+  → mTLS automático (Istio STRICT mode)
+  → Network Policies Kubernetes por namespace
+
+[ Secrets ]
+  → Kubernetes Secrets (staging)
+  → HashiCorp Vault ou cloud KMS (produção)
+
+[ Dados ]
+  → Usuários de banco com permissões mínimas por operação
+  → Criptografia em repouso (volume encryption)
+  → Backups automáticos diários com retenção de 30 dias
+
+[ Operação ]
+  → Logs de auditoria de autenticação (falhas com Warning)
+  → Alertas em falhas repetidas de autenticação
+  → Traces distribuídos (rastreabilidade ponta a ponta)
+```
+
+---
+
+## Canal Interno — Evolução Produção (Istio)
+
+> Esta seção descreve a arquitetura-alvo de produção, **não implementada no MVP**.
+
+- Toda comunicação entre pods no cluster seria criptografada com **mTLS automático** (Istio PeerAuthentication)
+- Certificados gerenciados pelo Istio CA com rotação automática
+- Modo: `STRICT` — nenhuma comunicação em plaintext aceita entre serviços
+- Network Policies Kubernetes: Launch/Balance só aceitam do BFF; Worker só do RabbitMQ; bancos não expostos fora do namespace
 
 ---
 
 ## Broker de Mensagens (RabbitMQ)
 
-- Autenticação com usuário e senha por serviço (credenciais individuais por produtor/consumidor)
-- Virtual Hosts separados por domínio (`/launch`, `/balance`)
-- TLS habilitado na porta de comunicação do broker
-- Credenciais armazenadas em **Kubernetes Secrets** (preferencialmente gerenciadas por Vault em produção)
-- Permissões de publish restritas ao Launch Service; permissões de consume restritas ao Worker
+**MVP:** usuário `guest` / senha `guest` — apenas local, sem exposição externa.
+
+**Produção:**
+- Usuário e senha por serviço (produtor e consumidor com permissões separadas)
+- Virtual Hosts separados por domínio
+- TLS habilitado na porta do broker
+- Credenciais em Kubernetes Secrets / Vault
 
 ---
 
-## Banco de Dados
-
-- Credenciais armazenadas em **Kubernetes Secrets** ou **Vault**
-- Usuários de banco com permissões mínimas:
-  - Launch Service: `INSERT`, `SELECT` em tabela de lançamentos
-  - Daily Balance Worker: `INSERT`, `UPDATE` em tabela de saldo
-  - Daily Balance Service: `SELECT` em tabela de saldo
-- Criptografia em repouso habilitada no volume do PostgreSQL
-- Backups automáticos diários com retenção de 30 dias
-
----
-
-## Gestão de Secrets
+## Gestão de Secrets — Evolução Produção
 
 | Ambiente | Mecanismo |
 |---|---|
-| Desenvolvimento local | `dotnet user-secrets` / `.env` (não versionado) |
-| Kubernetes | `Kubernetes Secrets` com RBAC restrito |
-| Produção | **HashiCorp Vault** com injeção via sidecar ou CSI Driver |
+| Local (MVP) | Variáveis de ambiente no `docker-compose.yml` |
+| Staging (K8s) | Kubernetes Secrets com RBAC restrito |
+| Produção | HashiCorp Vault (sidecar ou CSI Driver) — rotação, auditoria, políticas |
 
----
-
-## Auditoria e Rastreabilidade
-
-- Todos os registros de lançamentos incluem `CriadoEm` (UTC) e `UsuárioId` (do JWT)
-- Logs de autenticação (sucesso/falha) emitidos no BFF com nível `Warning` para falhas
-- Traces distribuídos (OpenTelemetry) permitem rastrear uma requisição de ponta a ponta
-- Retenção de logs de auditoria: mínimo 90 dias
-
----
-
-## Checklist de Segurança por Camada
-
-```
-[ Canal Externo ]
-  ✓ HTTPS/TLS 1.2+
-  ✓ JWT Bearer obrigatório
-  ✓ RBAC por role
-  ✓ Rate limiting
-  ✓ Headers de segurança
-
-[ Comunicação Interna ]
-  ✓ mTLS (Istio STRICT mode)
-  ✓ Network Policies (Kubernetes)
-  ✓ Zero trust entre namespaces
-
-[ Dados ]
-  ✓ Credenciais em Secrets / Vault
-  ✓ Permissões mínimas por serviço
-  ✓ Criptografia em repouso
-  ✓ Backup automático
-
-[ Operação ]
-  ✓ Logs de auditoria
-  ✓ Traces distribuídos
-  ✓ Alertas de falhas de autenticação
-```
+Fluxo em produção: secret criado no Vault → injetado no pod como variável de ambiente → ASP.NET Core lê via `IConfiguration` **sem alteração de código**.

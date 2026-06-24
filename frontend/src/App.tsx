@@ -8,6 +8,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LaunchesPage } from '@/pages/LaunchesPage'
 import { BalancePage } from '@/pages/BalancePage'
+import { UsersPage } from '@/pages/UsersPage'
 import { CoverageReportsPage } from '@/pages/CoverageReportsPage'
 
 const queryClient = new QueryClient({
@@ -40,7 +41,9 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/launches" element={<LaunchesPage />} />
         <Route path="/balance" element={<BalancePage />} />
-        <Route path="/coverage" element={<CoverageReportsPage />} />
+        <Route path="/users" element={<UsersPage />} />
+        <Route path="/tests" element={<CoverageReportsPage />} />
+        <Route path="/coverage" element={<Navigate to="/tests" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

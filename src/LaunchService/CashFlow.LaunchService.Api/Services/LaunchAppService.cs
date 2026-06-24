@@ -2,6 +2,7 @@ using CashFlow.LaunchService.Api.Data;
 using CashFlow.LaunchService.Api.Domain;
 using CashFlow.LaunchService.Api.Domain.Events;
 using CashFlow.LaunchService.Api.DTOs;
+using CashFlow.Observability;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,6 +31,8 @@ public class LaunchAppService(LaunchDbContext db, IPublishEndpoint publisher, IL
         }, ct);
 
         logger.LogDebug("[application] LaunchRegistered event published for LaunchId={LaunchId}", launch.Id);
+
+        CashFlowMeters.LaunchRegistrations.Add(1);
 
         return MapToResponse(launch);
     }

@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "generatedAt": "2026-06-24T19:19:40.399177+00:00",
+  "total": 5,
+  "passed": 5,
+  "failed": 0,
+  "durationMs": 1890,
+  "scenarios": [
+    {
+      "name": "cashflow.spec.ts › Autenticação › login com credenciais válidas redireciona ao dashboard",
+      "status": "passed",
+      "durationMs": 312
+    },
+    {
+      "name": "cashflow.spec.ts › Autenticação › login inválido exibe erro",
+      "status": "passed",
+      "durationMs": 179
+    },
+    {
+      "name": "cashflow.spec.ts › Fluxo de negócio › registrar lançamento e consultar saldo consolidado",
+      "status": "passed",
+      "durationMs": 536
+    },
+    {
+      "name": "cashflow.spec.ts › Fluxo de negócio › admin acessa gerenciamento de usuários",
+      "status": "passed",
+      "durationMs": 272
+    },
+    {
+      "name": "cashflow.spec.ts › Fluxo de negócio › página de testes carrega métricas",
+      "status": "passed",
+      "durationMs": 284
+    }
+  ]
+}

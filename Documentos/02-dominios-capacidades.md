@@ -112,10 +112,12 @@ Esta separação garante que:
 
 ## Arquitetura de Canal (BFF)
 
-O **BFF (Backend for Frontend)** é responsável por agregar os dois domínios para o canal web, sem conter lógica de negócio. Suas responsabilidades:
+O **BFF (Backend for Frontend)** é o ponto único de entrada do canal web, sem conter lógica de negócio. Suas responsabilidades:
 
-- Roteamento de requisições para o serviço correto
-- Composição de respostas (ex: listar lançamentos + saldo do dia em uma única chamada)
-- Autenticação e autorização (validação de JWT)
-- Rate limiting e throttling por cliente
-- Políticas de retry e timeout para chamadas downstream
+- Roteamento (proxy) de requisições para o microserviço correto
+- Autenticação (emissão de JWT) e autorização (RBAC por role)
+- Rate limiting e throttling por cliente/IP
+- Security headers centralizados
+- Gerenciamento de usuários (domínio de IAM, banco `bff_db`)
+
+> **Evolução futura:** composição de respostas (ex: lançamentos + saldo do dia em uma única chamada) — requer aggregation layer no BFF.

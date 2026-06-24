@@ -25,7 +25,7 @@ export interface RegisterLaunchRequest {
 }
 
 export interface LoginRequest {
-  username: string
+  email: string
   password: string
 }
 
@@ -33,6 +33,30 @@ export interface LoginResponse {
   accessToken: string
   tokenType: string
   expiresIn: number
+}
+
+export interface User {
+  id: string
+  name: string
+  email: string
+  role: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateUserRequest {
+  name: string
+  email: string
+  password: string
+}
+
+export interface UpdateUserRequest {
+  name: string
+  email: string
+}
+
+export interface UpdatePasswordRequest {
+  password: string
 }
 
 export interface ApiError {

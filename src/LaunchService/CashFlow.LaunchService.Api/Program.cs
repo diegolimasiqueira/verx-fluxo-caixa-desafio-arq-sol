@@ -3,6 +3,7 @@ using CashFlow.LaunchService.Api.Data;
 using CashFlow.LaunchService.Api.Domain.Events;
 using CashFlow.LaunchService.Api.Middleware;
 using CashFlow.LaunchService.Api.Services;
+using CashFlow.Observability;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddCashFlowObservability("launch-service");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -23,10 +26,10 @@ builder.Services.AddSwaggerGen(options =>
         Description = """
             Microserviço responsável pelo **registro e consulta de lançamentos financeiros** (débitos e créditos).
 
-            ## Fluxo de uso
-            1. Autentique-se em `POST /api/auth/login` com `admin` / `admin`
-            2. Clique em **Authorize** e cole o `accessToken` retornado
-            3. Use os endpoints de `/api/launches`
+            ## Autenticação
+            - Este serviço **não possui login próprio**
+            - Obtenha o JWT no **BFF** (`http://localhost:5000/swagger`) via `POST /api/auth/login`
+            - Clique em **Authorize** e cole o token para usar `/api/launches`
 
             ## Notas de negócio
             - Lançamentos são **imutáveis** após registro
@@ -41,7 +44,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Informe o JWT retornado pelo endpoint `/api/auth/login`."
+        Description = "Informe o JWT obtido no BFF (`POST /api/auth/login` em :5000)."
     });
 
     options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
@@ -77,21 +80,27 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddMassTransit(x =>
 {
-    x.UsingRabbitMq((_, cfg) =>
+    if (builder.Environment.IsEnvironment("Testing"))
     {
-        cfg.Host(builder.Configuration["RabbitMQ:Host"], h =>
+        x.UsingInMemory((_, _) => { });
+    }
+    else
+    {
+        x.UsingRabbitMq((_, cfg) =>
         {
-            h.Username(builder.Configuration["RabbitMQ:Username"]!);
-            h.Password(builder.Configuration["RabbitMQ:Password"]!);
-        });
+            cfg.Host(builder.Configuration["RabbitMQ:Host"], h =>
+            {
+                h.Username(builder.Configuration["RabbitMQ:Username"]!);
+                h.Password(builder.Configuration["RabbitMQ:Password"]!);
+            });
 
-        cfg.Message<LaunchRegisteredEvent>(m =>
-            m.SetEntityName("launch.registered"));
-    });
+            cfg.Message<LaunchRegisteredEvent>(m =>
+                m.SetEntityName("launch.registered"));
+        });
+    }
 });
 
 builder.Services.AddScoped<LaunchAppService>();
-builder.Services.AddScoped<TokenService>();
 
 var app = builder.Build();
 
@@ -114,6 +123,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseCashFlowObservability();
 
 app.Run();
 

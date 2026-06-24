@@ -1,10 +1,13 @@
 using CashFlow.DailyBalanceWorker.Consumers;
 using CashFlow.DailyBalanceWorker.Data;
 using CashFlow.LaunchService.Api.Domain.Events;
+using CashFlow.Observability;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddCashFlowObservability("daily-balance-worker");
 
 builder.Services.AddDbContext<WorkerDbContext>(opts =>
     opts.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
@@ -34,12 +37,16 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-var host = builder.Build();
+var app = builder.Build();
 
-using (var scope = host.Services.CreateScope())
+using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<WorkerDbContext>();
     db.Database.EnsureCreated();
 }
 
-host.Run();
+app.UseCashFlowObservability();
+
+app.Run();
+
+public partial class Program { }

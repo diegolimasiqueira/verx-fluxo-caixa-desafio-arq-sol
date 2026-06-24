@@ -2,12 +2,15 @@ using System.Text;
 using CashFlow.DailyBalanceService.Api.Data;
 using CashFlow.DailyBalanceService.Api.Middleware;
 using CashFlow.DailyBalanceService.Api.Services;
+using CashFlow.Observability;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddCashFlowObservability("daily-balance-service");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -21,10 +24,10 @@ builder.Services.AddSwaggerGen(options =>
         Description = """
             Microserviço responsável pela **consulta do saldo diário consolidado**.
 
-            ## Fluxo de uso
-            1. Autentique-se em `POST /api/auth/login` com `admin` / `admin`
-            2. Clique em **Authorize** e cole o `accessToken` retornado
-            3. Use os endpoints de `/api/balance`
+            ## Autenticação
+            - Este serviço **não possui login próprio**
+            - Obtenha o JWT no **BFF** (`http://localhost:5000/swagger`) via `POST /api/auth/login`
+            - Clique em **Authorize** e cole o token para usar `/api/balance`
 
             ## Notas de negócio
             - O saldo é consolidado **assincronamente** via eventos do Launch Service
@@ -40,7 +43,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Informe o JWT retornado pelo endpoint `/api/auth/login`."
+        Description = "Informe o JWT obtido no BFF (`POST /api/auth/login` em :5000)."
     });
 
     options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
@@ -74,8 +77,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<DailyBalanceQueryService>();
-builder.Services.AddScoped<TokenService>();
 
 var app = builder.Build();
 
@@ -95,6 +98,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseCashFlowObservability();
 
 app.Run();
 

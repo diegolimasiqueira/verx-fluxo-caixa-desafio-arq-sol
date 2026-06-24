@@ -1,0 +1,21 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: daily-balance-worker-scaler
+  labels:
+    app: daily-balance-worker
+spec:
+  scaleTargetRef:
+    name: daily-balance-worker
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  pollingInterval: 15
+  cooldownPeriod: 120
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: launch-registered
+        mode: QueueLength
+        value: "50"
+        hostFromEnv: RABBITMQ_CONNECTION_STRING

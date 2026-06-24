@@ -1,13 +1,10 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace CashFlow.LaunchService.Api.DTOs;
+namespace CashFlow.Bff.Api.DTOs;
 
 /// <summary>Credenciais para autenticação.</summary>
 public record LoginRequest(
-    /// <summary>Nome de usuário.</summary>
-    [Required] string Username,
-
-    /// <summary>Senha do usuário.</summary>
+    [Required][EmailAddress] string Email,
     [Required] string Password
 );
 

@@ -53,10 +53,17 @@ Um comerciante precisa controlar seu fluxo de caixa diário com registros de dé
 - O lag de consolidação deve ser monitorado e alertado se ultrapassar 30 segundos
 
 ### RNF-05 — Segurança
-- Todas as comunicações externas via HTTPS/TLS
-- Comunicação interna entre serviços via mTLS (Istio)
-- Autenticação de usuários via token JWT (OAuth2/OIDC)
-- Autorização baseada em roles no BFF
+
+**MVP (implementado):**
+- Comunicações externas via HTTPS/TLS (Ingress em produção)
+- Autenticação via **JWT emitido pelo BFF** após login e-mail/senha (usuários em `bff_db`, senhas com hash PBKDF2)
+- Autorização baseada em roles no BFF (`admin`, `merchant`)
+- Rate limiting e security headers no BFF
+- Microserviços validam JWT repassado pelo BFF (sem login próprio)
+
+**Evolução futura** (não faz parte do MVP — ver `07-evolucoes-futuras.md`):
+- mTLS entre serviços (Istio)
+- Identity Provider externo (ex.: Keycloak/OIDC)
 
 ### RNF-06 — Observabilidade
 - Todos os serviços expõem métricas, logs estruturados e traces distribuídos

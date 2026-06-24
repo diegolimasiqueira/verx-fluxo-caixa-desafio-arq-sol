@@ -12,4 +12,14 @@
     <Project Path="src/LaunchService/CashFlow.LaunchService.Api/CashFlow.LaunchService.Api.csproj" />
     <Project Path="src/LaunchService/CashFlow.LaunchService.Tests/CashFlow.LaunchService.Tests.csproj" />
   </Folder>
+  <Folder Name="/src/Bff/">
+    <Project Path="src/Bff/CashFlow.Bff.Api/CashFlow.Bff.Api.csproj" />
+    <Project Path="src/Bff/CashFlow.Bff.Api.Tests/CashFlow.Bff.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/src/Testing/">
+    <Project Path="src/Testing/CashFlow.Testing.Common/CashFlow.Testing.Common.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/CashFlow.Observability/CashFlow.Observability.csproj" />
+  </Folder>
 </Solution>

@@ -16,7 +16,7 @@
       }
   
       bff = component 'BFF / API Gateway' {
-        description 'Camada de entrada para o canal web. Centraliza roteamento, composição de respostas e políticas de consumo.'
+        description 'Camada de entrada para o canal web. Autenticação JWT (login e-mail/senha), RBAC, rate limiting e proxy para microserviços internos.'
         technology '.NET 10'
         style {
           icon tech:dotnet

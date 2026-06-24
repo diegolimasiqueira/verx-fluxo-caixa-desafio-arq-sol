@@ -154,10 +154,12 @@ Introduzir um **BFF (.NET 10)** como ponto único de entrada para o canal web.
 
 **Responsabilidades do BFF:**
 - Validação e propagação de JWT
-- Roteamento para Launch Service e Daily Balance Service
-- Composição de respostas (aggregation de múltiplas chamadas em uma resposta)
+- Roteamento (proxy) para Launch Service e Daily Balance Service
 - Rate limiting por usuário/IP
-- Políticas de timeout e retry para chamadas downstream
+- Security headers e políticas de CORS centralizadas
+- Gerenciamento de usuários (`bff_db`)
+
+> **MVP:** o BFF funciona como proxy — roteia chamadas individualmente para cada microserviço. Aggregation de múltiplas chamadas em uma única resposta é evolução futura.
 
 **Consequências:**
 - O BFF se torna um ponto crítico — deve ter alta disponibilidade e escala independente
